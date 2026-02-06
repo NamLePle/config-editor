@@ -228,10 +228,31 @@ class JSONEditor {
 
     let html = '';
 
+    // Changed values
+    const changes = [];
+    for (const key of commonKeys) {
+      const oldVal = oldObj[key];
+      const newVal = newObj[key];
+      const comparison = this.compareValues(oldVal, newVal, `${path}${key}`);
+      if (comparison) {
+        changes.push(...comparison);
+      }
+    }
+
+    // Summary header
+    const totalChanges = addedKeys.length + removedKeys.length + changes.length;
+    html += `<div class="diff-summary">
+      <strong>Summary:</strong>
+      <span class="diff-count added">${addedKeys.length} added</span> |
+      <span class="diff-count removed">${removedKeys.length} removed</span> |
+      <span class="diff-count changed">${changes.length} modified</span> |
+      <strong>Total: ${totalChanges} changes</strong>
+    </div>`;
+
     // Added keys
     if (addedKeys.length > 0) {
       html += `<div class="diff-section">
-        <div class="diff-section-title added">+ Added Keys</div>`;
+        <div class="diff-section-title added">+ Added Keys (${addedKeys.length})</div>`;
       for (const key of addedKeys) {
         const value = this.formatValue(newObj[key]);
         html += `<div class="diff-item added">
@@ -245,7 +266,7 @@ class JSONEditor {
     // Removed keys
     if (removedKeys.length > 0) {
       html += `<div class="diff-section">
-        <div class="diff-section-title removed">- Removed Keys</div>`;
+        <div class="diff-section-title removed">- Removed Keys (${removedKeys.length})</div>`;
       for (const key of removedKeys) {
         const value = this.formatValue(oldObj[key]);
         html += `<div class="diff-item removed">
@@ -256,20 +277,10 @@ class JSONEditor {
       html += '</div>';
     }
 
-    // Changed values
-    const changes = [];
-    for (const key of commonKeys) {
-      const oldVal = oldObj[key];
-      const newVal = newObj[key];
-      const comparison = this.compareValues(oldVal, newVal, `${path}${key}`);
-      if (comparison) {
-        changes.push(...comparison);
-      }
-    }
-
+    // Modified values
     if (changes.length > 0) {
       html += `<div class="diff-section">
-        <div class="diff-section-title changed">~ Modified Values</div>`;
+        <div class="diff-section-title changed">~ Modified Values (${changes.length})</div>`;
       for (const change of changes) {
         html += change;
       }

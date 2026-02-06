@@ -242,6 +242,26 @@ header h1 {
   font-size: 0.8rem;
 }
 
+.diff-summary {
+  padding: 10px 14px;
+  margin-bottom: 16px;
+  background-color: var(--bg-tertiary);
+  border-radius: 4px;
+  font-size: 0.85rem;
+}
+
+.diff-count.added {
+  color: var(--accent-success);
+}
+
+.diff-count.removed {
+  color: var(--accent-error);
+}
+
+.diff-count.changed {
+  color: var(--accent-warning);
+}
+
 .diff-section {
   margin-bottom: 16px;
 }
