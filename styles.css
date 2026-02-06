@@ -15,9 +15,10 @@
   --accent-warning: #ff9800;
   --accent-error: #f44336;
   --border-color: #3c3c3c;
-  --diff-added: rgba(76, 175, 80, 0.2);
-  --diff-removed: rgba(244, 67, 54, 0.2);
-  --diff-changed: rgba(255, 152, 0, 0.2);
+  --diff-added: rgba(76, 175, 80, 0.08);
+  --diff-removed: rgba(244, 67, 54, 0.08);
+  --diff-changed: rgba(255, 152, 0, 0.08);
+  --diff-warning: rgba(255, 193, 7, 0.12);
 }
 
 body {
@@ -286,6 +287,23 @@ header h1 {
 .diff-section-title.changed {
   background-color: var(--diff-changed);
   color: var(--accent-warning);
+}
+
+.diff-section-title.warning {
+  background-color: var(--diff-warning);
+  color: #ffc107;
+}
+
+.diff-warnings {
+  margin-bottom: 16px;
+  border: 1px solid #ffc107;
+  border-radius: 4px;
+  padding: 10px;
+}
+
+.diff-item.warning {
+  background-color: var(--diff-warning);
+  color: #ffc107;
 }
 
 .diff-item {

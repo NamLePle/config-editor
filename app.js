@@ -201,12 +201,26 @@ class JSONEditor {
       return;
     }
 
+    // Validate marketId uniqueness
+    const validationWarnings = this.validateConfig(newConfig);
+
     this.setStatus('Fetching current config for comparison...', 'loading');
     document.getElementById('diff-btn').disabled = true;
 
     try {
       const oldConfig = await this.fetchCurrentConfig();
-      const diffHtml = this.generateDiffHtml(oldConfig, newConfig);
+      const oldValidationWarnings = this.validateConfig(oldConfig, 'Source config');
+      const allWarnings = [...oldValidationWarnings, ...validationWarnings];
+
+      let diffHtml = '';
+      if (allWarnings.length > 0) {
+        diffHtml += `<div class="diff-warnings">
+          <div class="diff-section-title warning">⚠ Warnings</div>
+          ${allWarnings.map(w => `<div class="diff-item warning">${this.escapeHtml(w)}</div>`).join('')}
+        </div>`;
+      }
+
+      diffHtml += this.generateDiffHtml(oldConfig, newConfig);
       this.diffContent.innerHTML = diffHtml;
       this.diffContainer.style.display = 'block';
       this.setStatus('Diff generated', 'success');
@@ -218,7 +232,85 @@ class JSONEditor {
     }
   }
 
+  validateConfig(config, prefix = 'New config') {
+    const warnings = [];
+
+    // Check borosTradeConfig.operations
+    if (config?.borosTradeConfig?.operations) {
+      const marketIds = config.borosTradeConfig.operations.map(op => op.marketId);
+      const duplicates = marketIds.filter((id, idx) => marketIds.indexOf(id) !== idx);
+      if (duplicates.length > 0) {
+        warnings.push(`${prefix}: Duplicate marketId in borosTradeConfig.operations: ${[...new Set(duplicates)].join(', ')}`);
+      }
+    }
+
+    // Check cashAndCarryConfig.operations
+    if (config?.cashAndCarryConfig?.operations) {
+      const symbols = config.cashAndCarryConfig.operations.map(op => op.symbol);
+      const duplicates = symbols.filter((s, idx) => symbols.indexOf(s) !== idx);
+      if (duplicates.length > 0) {
+        warnings.push(`${prefix}: Duplicate symbol in cashAndCarryConfig.operations: ${[...new Set(duplicates)].join(', ')}`);
+      }
+    }
+
+    return warnings;
+  }
+
   generateDiffHtml(oldObj, newObj, path = '') {
+    // Collect all changes recursively
+    const result = { added: [], removed: [], changed: [] };
+    this.collectChanges(oldObj, newObj, path, result);
+
+    let html = '';
+
+    // Summary header
+    const totalChanges = result.added.length + result.removed.length + result.changed.length;
+    html += `<div class="diff-summary">
+      <strong>Summary:</strong>
+      <span class="diff-count added">${result.added.length} added</span> |
+      <span class="diff-count removed">${result.removed.length} removed</span> |
+      <span class="diff-count changed">${result.changed.length} modified</span> |
+      <strong>Total: ${totalChanges} changes</strong>
+    </div>`;
+
+    // Added items
+    if (result.added.length > 0) {
+      html += `<div class="diff-section">
+        <div class="diff-section-title added">+ Added (${result.added.length})</div>`;
+      for (const item of result.added) {
+        html += item;
+      }
+      html += '</div>';
+    }
+
+    // Removed items
+    if (result.removed.length > 0) {
+      html += `<div class="diff-section">
+        <div class="diff-section-title removed">- Removed (${result.removed.length})</div>`;
+      for (const item of result.removed) {
+        html += item;
+      }
+      html += '</div>';
+    }
+
+    // Modified values
+    if (result.changed.length > 0) {
+      html += `<div class="diff-section">
+        <div class="diff-section-title changed">~ Modified Values (${result.changed.length})</div>`;
+      for (const item of result.changed) {
+        html += item;
+      }
+      html += '</div>';
+    }
+
+    if (result.added.length === 0 && result.removed.length === 0 && result.changed.length === 0) {
+      html = '<div class="no-changes">No changes detected</div>';
+    }
+
+    return html;
+  }
+
+  collectChanges(oldObj, newObj, path, result) {
     const oldKeys = new Set(Object.keys(oldObj || {}));
     const newKeys = new Set(Object.keys(newObj || {}));
 
@@ -226,166 +318,165 @@ class JSONEditor {
     const removedKeys = [...oldKeys].filter(k => !newKeys.has(k));
     const commonKeys = [...oldKeys].filter(k => newKeys.has(k));
 
-    let html = '';
+    // Top-level added keys
+    for (const key of addedKeys) {
+      const value = this.formatValue(newObj[key]);
+      result.added.push(`<div class="diff-item added">
+        <span class="diff-key">${path}${key}</span>
+        <span class="diff-value">${this.escapeHtml(value)}</span>
+      </div>`);
+    }
 
-    // Changed values
-    const changes = [];
+    // Top-level removed keys
+    for (const key of removedKeys) {
+      const value = this.formatValue(oldObj[key]);
+      result.removed.push(`<div class="diff-item removed">
+        <span class="diff-key">${path}${key}</span>
+        <span class="diff-value">${this.escapeHtml(value)}</span>
+      </div>`);
+    }
+
+    // Compare common keys
     for (const key of commonKeys) {
-      const oldVal = oldObj[key];
-      const newVal = newObj[key];
-      const comparison = this.compareValues(oldVal, newVal, `${path}${key}`);
-      if (comparison) {
-        changes.push(...comparison);
-      }
+      this.compareValues(oldObj[key], newObj[key], `${path}${key}`, result);
     }
-
-    // Summary header
-    const totalChanges = addedKeys.length + removedKeys.length + changes.length;
-    html += `<div class="diff-summary">
-      <strong>Summary:</strong>
-      <span class="diff-count added">${addedKeys.length} added</span> |
-      <span class="diff-count removed">${removedKeys.length} removed</span> |
-      <span class="diff-count changed">${changes.length} modified</span> |
-      <strong>Total: ${totalChanges} changes</strong>
-    </div>`;
-
-    // Added keys
-    if (addedKeys.length > 0) {
-      html += `<div class="diff-section">
-        <div class="diff-section-title added">+ Added Keys (${addedKeys.length})</div>`;
-      for (const key of addedKeys) {
-        const value = this.formatValue(newObj[key]);
-        html += `<div class="diff-item added">
-          <span class="diff-key">${path}${key}</span>
-          <span class="diff-value">${this.escapeHtml(value)}</span>
-        </div>`;
-      }
-      html += '</div>';
-    }
-
-    // Removed keys
-    if (removedKeys.length > 0) {
-      html += `<div class="diff-section">
-        <div class="diff-section-title removed">- Removed Keys (${removedKeys.length})</div>`;
-      for (const key of removedKeys) {
-        const value = this.formatValue(oldObj[key]);
-        html += `<div class="diff-item removed">
-          <span class="diff-key">${path}${key}</span>
-          <span class="diff-value">${this.escapeHtml(value)}</span>
-        </div>`;
-      }
-      html += '</div>';
-    }
-
-    // Modified values
-    if (changes.length > 0) {
-      html += `<div class="diff-section">
-        <div class="diff-section-title changed">~ Modified Values (${changes.length})</div>`;
-      for (const change of changes) {
-        html += change;
-      }
-      html += '</div>';
-    }
-
-    if (addedKeys.length === 0 && removedKeys.length === 0 && changes.length === 0) {
-      html = '<div class="no-changes">No changes detected</div>';
-    }
-
-    return html;
   }
 
-  compareValues(oldVal, newVal, path) {
-    if (oldVal === newVal) return null;
+  compareValues(oldVal, newVal, path, result) {
+    if (oldVal === newVal) return;
 
     const oldType = typeof oldVal;
     const newType = typeof newVal;
 
     // Both are numbers
     if (oldType === 'number' && newType === 'number') {
-      if (oldVal === newVal) return null;
+      if (oldVal === newVal) return;
       const diff = Math.abs(newVal - oldVal);
       const maxVal = Math.max(Math.abs(oldVal), Math.abs(newVal));
       const relativeDiff = diff / (maxVal + 1e-9);
       const percentChange = (relativeDiff * 100).toFixed(2);
 
-      return [`<div class="diff-item changed">
+      result.changed.push(`<div class="diff-item changed">
         <span class="diff-key">${path}</span>
         <div class="diff-comparison">
           <span class="diff-old">Old: ${oldVal}</span>
           <span class="diff-new">New: ${newVal}</span>
           <span class="diff-delta">Δ: ${diff.toFixed(6)} (${percentChange}%)</span>
         </div>
-      </div>`];
+      </div>`);
+      return;
     }
 
     // Both are strings
     if (oldType === 'string' && newType === 'string') {
-      if (oldVal === newVal) return null;
-      return [`<div class="diff-item changed">
+      if (oldVal === newVal) return;
+      result.changed.push(`<div class="diff-item changed">
         <span class="diff-key">${path}</span>
         <div class="diff-comparison">
           <span class="diff-old">Old: "${this.escapeHtml(oldVal)}"</span>
           <span class="diff-new">New: "${this.escapeHtml(newVal)}"</span>
         </div>
-      </div>`];
+      </div>`);
+      return;
     }
 
     // Both are booleans
     if (oldType === 'boolean' && newType === 'boolean') {
-      if (oldVal === newVal) return null;
-      return [`<div class="diff-item changed">
+      if (oldVal === newVal) return;
+      result.changed.push(`<div class="diff-item changed">
         <span class="diff-key">${path}</span>
         <div class="diff-comparison">
           <span class="diff-old">Old: ${oldVal}</span>
           <span class="diff-new">New: ${newVal}</span>
         </div>
-      </div>`];
+      </div>`);
+      return;
     }
 
     // Both are arrays
     if (Array.isArray(oldVal) && Array.isArray(newVal)) {
-      const changes = [];
-      const maxLen = Math.max(oldVal.length, newVal.length);
+      // Check if this is an operations array (items have marketId or symbol)
+      const isOperationsArray = (oldVal.length > 0 && (oldVal[0]?.marketId !== undefined || oldVal[0]?.symbol !== undefined)) ||
+                                 (newVal.length > 0 && (newVal[0]?.marketId !== undefined || newVal[0]?.symbol !== undefined));
 
-      if (oldVal.length !== newVal.length) {
-        changes.push(`<div class="diff-item changed">
-          <span class="diff-key">${path}.length</span>
-          <div class="diff-comparison">
-            <span class="diff-old">Old: ${oldVal.length}</span>
-            <span class="diff-new">New: ${newVal.length}</span>
-          </div>
-        </div>`);
-      }
+      if (isOperationsArray) {
+        // Match by marketId or symbol
+        const getKey = (item) => item?.marketId !== undefined ? `marketId:${item.marketId}` : `symbol:${item?.symbol}`;
 
-      for (let i = 0; i < maxLen; i++) {
-        if (i >= oldVal.length) {
-          changes.push(`<div class="diff-item added">
-            <span class="diff-key">${path}[${i}]</span>
-            <span class="diff-value">${this.escapeHtml(this.formatValue(newVal[i]))}</span>
+        const oldMap = new Map(oldVal.map(item => [getKey(item), item]));
+        const newMap = new Map(newVal.map(item => [getKey(item), item]));
+
+        const oldKeys = new Set(oldMap.keys());
+        const newKeys = new Set(newMap.keys());
+
+        // Added operations
+        for (const key of newKeys) {
+          if (!oldKeys.has(key)) {
+            result.added.push(`<div class="diff-item added">
+              <span class="diff-key">${path}[${key}]</span>
+              <span class="diff-value">${this.escapeHtml(this.formatValue(newMap.get(key)))}</span>
+            </div>`);
+          }
+        }
+
+        // Removed operations
+        for (const key of oldKeys) {
+          if (!newKeys.has(key)) {
+            result.removed.push(`<div class="diff-item removed">
+              <span class="diff-key">${path}[${key}]</span>
+              <span class="diff-value">${this.escapeHtml(this.formatValue(oldMap.get(key)))}</span>
+            </div>`);
+          }
+        }
+
+        // Modified operations (same marketId/symbol)
+        for (const key of oldKeys) {
+          if (newKeys.has(key)) {
+            this.compareValues(oldMap.get(key), newMap.get(key), `${path}[${key}]`, result);
+          }
+        }
+      } else {
+        // Default array comparison by index
+        const maxLen = Math.max(oldVal.length, newVal.length);
+
+        if (oldVal.length !== newVal.length) {
+          result.changed.push(`<div class="diff-item changed">
+            <span class="diff-key">${path}.length</span>
+            <div class="diff-comparison">
+              <span class="diff-old">Old: ${oldVal.length}</span>
+              <span class="diff-new">New: ${newVal.length}</span>
+            </div>
           </div>`);
-        } else if (i >= newVal.length) {
-          changes.push(`<div class="diff-item removed">
-            <span class="diff-key">${path}[${i}]</span>
-            <span class="diff-value">${this.escapeHtml(this.formatValue(oldVal[i]))}</span>
-          </div>`);
-        } else {
-          const itemChanges = this.compareValues(oldVal[i], newVal[i], `${path}[${i}]`);
-          if (itemChanges) changes.push(...itemChanges);
+        }
+
+        for (let i = 0; i < maxLen; i++) {
+          if (i >= oldVal.length) {
+            result.added.push(`<div class="diff-item added">
+              <span class="diff-key">${path}[${i}]</span>
+              <span class="diff-value">${this.escapeHtml(this.formatValue(newVal[i]))}</span>
+            </div>`);
+          } else if (i >= newVal.length) {
+            result.removed.push(`<div class="diff-item removed">
+              <span class="diff-key">${path}[${i}]</span>
+              <span class="diff-value">${this.escapeHtml(this.formatValue(oldVal[i]))}</span>
+            </div>`);
+          } else {
+            this.compareValues(oldVal[i], newVal[i], `${path}[${i}]`, result);
+          }
         }
       }
-      return changes.length > 0 ? changes : null;
+      return;
     }
 
     // Both are objects
     if (oldType === 'object' && newType === 'object' && oldVal !== null && newVal !== null) {
       const oldKeys = new Set(Object.keys(oldVal));
       const newKeys = new Set(Object.keys(newVal));
-      const changes = [];
 
       // Added keys in nested object
       for (const key of newKeys) {
         if (!oldKeys.has(key)) {
-          changes.push(`<div class="diff-item added">
+          result.added.push(`<div class="diff-item added">
             <span class="diff-key">${path}.${key}</span>
             <span class="diff-value">${this.escapeHtml(this.formatValue(newVal[key]))}</span>
           </div>`);
@@ -395,7 +486,7 @@ class JSONEditor {
       // Removed keys in nested object
       for (const key of oldKeys) {
         if (!newKeys.has(key)) {
-          changes.push(`<div class="diff-item removed">
+          result.removed.push(`<div class="diff-item removed">
             <span class="diff-key">${path}.${key}</span>
             <span class="diff-value">${this.escapeHtml(this.formatValue(oldVal[key]))}</span>
           </div>`);
@@ -405,22 +496,20 @@ class JSONEditor {
       // Common keys
       for (const key of oldKeys) {
         if (newKeys.has(key)) {
-          const nestedChanges = this.compareValues(oldVal[key], newVal[key], `${path}.${key}`);
-          if (nestedChanges) changes.push(...nestedChanges);
+          this.compareValues(oldVal[key], newVal[key], `${path}.${key}`, result);
         }
       }
-
-      return changes.length > 0 ? changes : null;
+      return;
     }
 
     // Type changed
-    return [`<div class="diff-item changed">
+    result.changed.push(`<div class="diff-item changed">
       <span class="diff-key">${path}</span>
       <div class="diff-comparison">
         <span class="diff-old">Old (${oldType}): ${this.escapeHtml(this.formatValue(oldVal))}</span>
         <span class="diff-new">New (${newType}): ${this.escapeHtml(this.formatValue(newVal))}</span>
       </div>
-    </div>`];
+    </div>`);
   }
 
   formatValue(val) {
@@ -466,11 +555,25 @@ class JSONEditor {
       return;
     }
 
+    // Validate marketId uniqueness
+    const validationWarnings = this.validateConfig(newConfig);
+
     this.setStatus('Fetching current config for comparison...', 'loading');
 
     try {
       const oldConfig = await this.fetchCurrentConfig();
-      const diffHtml = this.generateDiffHtml(oldConfig, newConfig);
+      const oldValidationWarnings = this.validateConfig(oldConfig, 'Source config');
+      const allWarnings = [...oldValidationWarnings, ...validationWarnings];
+
+      let diffHtml = '';
+      if (allWarnings.length > 0) {
+        diffHtml += `<div class="diff-warnings">
+          <div class="diff-section-title warning">⚠ Warnings</div>
+          ${allWarnings.map(w => `<div class="diff-item warning">${this.escapeHtml(w)}</div>`).join('')}
+        </div>`;
+      }
+
+      diffHtml += this.generateDiffHtml(oldConfig, newConfig);
       this.confirmDiffContent.innerHTML = diffHtml;
       this.confirmModal.classList.add('show');
       this.setStatus('Review changes before applying', 'loading');
