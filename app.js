@@ -14,6 +14,8 @@ class JSONEditor {
     this.confirmDiffContent = document.getElementById('confirm-diff-content');
 
     this.lastFetchedConfig = null;
+    this.lastDiffData = null; // Store last diff data for re-rendering
+    this.numberTooltip = document.getElementById('number-tooltip');
 
     this.initEventListeners();
     this.updateLineNumbers();
@@ -38,6 +40,10 @@ class JSONEditor {
 
     // Diff close button
     document.getElementById('close-diff-btn').addEventListener('click', () => this.closeDiff());
+
+    // Editor hover for number tooltip
+    this.editor.addEventListener('mousemove', (e) => this.handleEditorHover(e));
+    this.editor.addEventListener('mouseleave', () => this.hideNumberTooltip());
 
     // Error modal events
     document.getElementById('modal-close').addEventListener('click', () => this.closeErrorModal());
@@ -212,16 +218,10 @@ class JSONEditor {
       const oldValidationWarnings = this.validateConfig(oldConfig, 'Source config');
       const allWarnings = [...oldValidationWarnings, ...validationWarnings];
 
-      let diffHtml = '';
-      if (allWarnings.length > 0) {
-        diffHtml += `<div class="diff-warnings">
-          <div class="diff-section-title warning">⚠ Warnings</div>
-          ${allWarnings.map(w => `<div class="diff-item warning">${this.escapeHtml(w)}</div>`).join('')}
-        </div>`;
-      }
+      // Store for refresh
+      this.lastDiffData = { oldConfig, newConfig, allWarnings };
 
-      diffHtml += this.generateDiffHtml(oldConfig, newConfig);
-      this.diffContent.innerHTML = diffHtml;
+      this.renderDiff(this.diffContent);
       this.diffContainer.style.display = 'block';
       this.setStatus('Diff generated', 'success');
     } catch (error) {
@@ -229,6 +229,29 @@ class JSONEditor {
       this.showError(`Failed to fetch current config:\n\n${error.message}`);
     } finally {
       document.getElementById('diff-btn').disabled = false;
+    }
+  }
+
+  renderDiff(container) {
+    if (!this.lastDiffData) return;
+
+    const { oldConfig, newConfig, allWarnings } = this.lastDiffData;
+
+    let diffHtml = '';
+    if (allWarnings.length > 0) {
+      diffHtml += `<div class="diff-warnings">
+        <div class="diff-section-title warning">⚠ Warnings</div>
+        ${allWarnings.map(w => `<div class="diff-item warning">${this.escapeHtml(w)}</div>`).join('')}
+      </div>`;
+    }
+
+    diffHtml += this.generateDiffHtml(oldConfig, newConfig);
+    container.innerHTML = diffHtml;
+  }
+
+  refreshDiff() {
+    if (this.lastDiffData && this.diffContainer.style.display !== 'none') {
+      this.renderDiff(this.diffContent);
     }
   }
 
@@ -356,11 +379,14 @@ class JSONEditor {
       const relativeDiff = diff / (maxVal + 1e-9);
       const percentChange = (relativeDiff * 100).toFixed(2);
 
+      const oldDisplay = this.formatNumber(oldVal);
+      const newDisplay = this.formatNumber(newVal);
+
       result.changed.push(`<div class="diff-item changed">
         <span class="diff-key">${path}</span>
         <div class="diff-comparison">
-          <span class="diff-old">Old: ${oldVal}</span>
-          <span class="diff-new">New: ${newVal}</span>
+          <span class="diff-old">Old: ${oldDisplay}</span>
+          <span class="diff-new">New: ${newDisplay}</span>
           <span class="diff-delta">Δ: ${diff.toFixed(6)} (${percentChange}%)</span>
         </div>
       </div>`);
@@ -520,6 +546,85 @@ class JSONEditor {
       return str.length > 100 ? str.substring(0, 100) + '...' : str;
     }
     return String(val);
+  }
+
+  formatNumber(val) {
+    return String(val);
+  }
+
+  handleEditorHover(e) {
+    const text = this.editor.value;
+    const rect = this.editor.getBoundingClientRect();
+
+    // Get approximate character position based on mouse position
+    const lineHeight = parseFloat(getComputedStyle(this.editor).lineHeight) || 21;
+    const charWidth = 8.4; // Approximate for monospace font
+
+    const scrollTop = this.editor.scrollTop;
+    const scrollLeft = this.editor.scrollLeft;
+
+    const x = e.clientX - rect.left + scrollLeft - 14; // 14px padding
+    const y = e.clientY - rect.top + scrollTop - 14;
+
+    const lineIndex = Math.floor(y / lineHeight);
+    const charIndex = Math.floor(x / charWidth);
+
+    const lines = text.split('\n');
+    if (lineIndex < 0 || lineIndex >= lines.length) {
+      this.hideNumberTooltip();
+      return;
+    }
+
+    const line = lines[lineIndex];
+    if (charIndex < 0 || charIndex >= line.length) {
+      this.hideNumberTooltip();
+      return;
+    }
+
+    // Find the number at cursor position
+    const numberMatch = this.findNumberAtPosition(line, charIndex);
+    if (numberMatch) {
+      const num = parseFloat(numberMatch);
+      if (!isNaN(num) && num >= -1 && num <= 1 && num !== 0) {
+        const percentVal = (num * 100).toFixed(2);
+        this.numberTooltip.textContent = `${num} = ${percentVal}%`;
+        this.numberTooltip.style.left = `${e.clientX + 10}px`;
+        this.numberTooltip.style.top = `${e.clientY - 30}px`;
+        this.numberTooltip.classList.add('visible');
+        return;
+      }
+    }
+
+    this.hideNumberTooltip();
+  }
+
+  findNumberAtPosition(line, charIndex) {
+    // Find word boundaries around the character position
+    let start = charIndex;
+    let end = charIndex;
+
+    // Expand left
+    while (start > 0 && /[\d.\-e]/.test(line[start - 1])) {
+      start--;
+    }
+
+    // Expand right
+    while (end < line.length && /[\d.\-e]/.test(line[end])) {
+      end++;
+    }
+
+    const word = line.substring(start, end);
+
+    // Check if it's a valid number
+    if (/^-?\d*\.?\d+([eE][+-]?\d+)?$/.test(word)) {
+      return word;
+    }
+
+    return null;
+  }
+
+  hideNumberTooltip() {
+    this.numberTooltip.classList.remove('visible');
   }
 
   escapeHtml(str) {

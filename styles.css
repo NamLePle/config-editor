@@ -235,6 +235,26 @@ header h1 {
   font-size: 0.875rem;
 }
 
+/* Number tooltip for editor */
+.number-tooltip {
+  position: fixed;
+  background-color: var(--bg-tertiary);
+  border: 1px solid var(--accent-primary);
+  border-radius: 4px;
+  padding: 6px 10px;
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+  font-size: 0.8rem;
+  color: var(--accent-primary);
+  pointer-events: none;
+  z-index: 1000;
+  display: none;
+  white-space: nowrap;
+}
+
+.number-tooltip.visible {
+  display: block;
+}
+
 .diff-content {
   padding: 14px;
   max-height: 400px;
