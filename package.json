@@ -1,0 +1,9 @@
+{
+  "name": "json-editor",
+  "version": "1.0.0",
+  "description": "JSON Config Editor for bot configuration",
+  "scripts": {
+    "start": "npx serve .",
+    "dev": "npx live-server --port=3000"
+  }
+}

@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>JSON Config Editor</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>JSON Config Editor</h1>
+    </header>
+
+    <div class="config-section">
+      <div class="config-row">
+        <label for="api-url">API URL:</label>
+        <input
+          type="text"
+          id="api-url"
+          placeholder="Enter API URL"
+        >
+      </div>
+      <div class="config-row">
+        <label for="admin-key">Admin Key:</label>
+        <input
+          type="password"
+          id="admin-key"
+          placeholder="Enter admin API key"
+        >
+      </div>
+    </div>
+
+    <div class="status-bar" id="status-bar">
+      <span class="status-text" id="status-text">Ready</span>
+    </div>
+
+    <div class="main-actions">
+      <button id="fetch-btn" class="btn btn-primary">Fetch</button>
+      <button id="diff-btn" class="btn btn-secondary">Show Diff</button>
+      <button id="modify-btn" class="btn btn-success">Modify</button>
+    </div>
+
+    <div class="editor-container">
+      <div class="editor-header">
+        <span>JSON Editor</span>
+        <div class="editor-actions">
+          <button id="format-btn" class="btn btn-secondary">Format</button>
+          <button id="validate-btn" class="btn btn-secondary">Validate</button>
+          <button id="copy-btn" class="btn btn-secondary">Copy</button>
+        </div>
+      </div>
+      <div class="editor-wrapper">
+        <div class="line-numbers" id="line-numbers"></div>
+        <textarea id="json-editor" spellcheck="false" placeholder="Fetch JSON from API or paste JSON here..."></textarea>
+      </div>
+    </div>
+
+    <div class="diff-container" id="diff-container" style="display: none;">
+      <div class="diff-header">
+        <span>Diff Result</span>
+        <button id="close-diff-btn" class="btn btn-secondary">Close</button>
+      </div>
+      <div class="diff-content" id="diff-content"></div>
+    </div>
+
+    <div class="modal" id="confirm-modal">
+      <div class="modal-content modal-large">
+        <div class="modal-header">
+          <h3>Confirm Modification</h3>
+          <button class="modal-close" id="confirm-modal-close">&times;</button>
+        </div>
+        <div class="modal-body">
+          <p>Review the changes below before applying:</p>
+          <div class="diff-content" id="confirm-diff-content"></div>
+        </div>
+        <div class="modal-footer">
+          <button id="cancel-modify-btn" class="btn btn-secondary">Cancel</button>
+          <button id="confirm-modify-btn" class="btn btn-success">Confirm & Apply</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal" id="error-modal">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h3>Error</h3>
+          <button class="modal-close" id="modal-close">&times;</button>
+        </div>
+        <div class="modal-body" id="modal-body"></div>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
