@@ -108,10 +108,21 @@ class JSONEditor {
 
   getBaseUrl() {
     const url = this.urlInput.value.trim();
-    // Extract base URL: https://host/1/docs -> https://host/1
-    const match = url.match(/^(https?:\/\/[^/]+\/\d+)/);
-    if (!match) return null;
-    return match[1];
+    try {
+      const parsed = new URL(url);
+      // Remove trailing path like /docs, keep origin + any leading path segments
+      // e.g. https://host/1/docs -> https://host/1
+      // e.g. http://localhost:28888/docs -> http://localhost:28888
+      const segments = parsed.pathname.split('/').filter(Boolean);
+      // Remove known trailing non-base segments (like "docs")
+      while (segments.length > 0 && !/^\d+$/.test(segments[segments.length - 1])) {
+        segments.pop();
+      }
+      const basePath = segments.length > 0 ? '/' + segments.join('/') : '';
+      return parsed.origin + basePath;
+    } catch {
+      return null;
+    }
   }
 
   getConfigUrl() {
@@ -127,7 +138,7 @@ class JSONEditor {
   async fetchConfig() {
     const configUrl = this.getConfigUrl();
     if (!configUrl) {
-      this.showError('Invalid URL format.\n\nExpected: https://host/1/docs');
+      this.showError('Invalid URL format.\n\nExpected: https://host/docs or https://host/1/docs');
       return;
     }
 
@@ -706,7 +717,7 @@ class JSONEditor {
     const adminKey = this.adminKeyInput.value.trim();
     const modifyUrl = this.getModifyUrl();
     if (!modifyUrl) {
-      this.showError('Invalid URL format.\n\nExpected: https://host/1/docs');
+      this.showError('Invalid URL format.\n\nExpected: https://host/docs or https://host/1/docs');
       return;
     }
 
