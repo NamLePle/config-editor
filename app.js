@@ -16,6 +16,8 @@ class JSONEditor {
     this.lastFetchedConfig = null;
     this.lastDiffData = null; // Store last diff data for re-rendering
     this.numberTooltip = document.getElementById('number-tooltip');
+    this.historyPanel = document.getElementById('history-panel');
+    this.historyList = document.getElementById('history-list');
 
     this.initEventListeners();
     this.updateLineNumbers();
@@ -58,6 +60,10 @@ class JSONEditor {
     this.confirmModal.addEventListener('click', (e) => {
       if (e.target === this.confirmModal) this.closeConfirmModal();
     });
+
+    // History panel events
+    document.getElementById('history-btn').addEventListener('click', () => this.toggleHistoryPanel());
+    document.getElementById('close-history-btn').addEventListener('click', () => this.closeHistoryPanel());
 
     // Save settings on change
     this.urlInput.addEventListener('change', () => this.saveSettings());
@@ -165,6 +171,7 @@ class JSONEditor {
       try {
         const data = JSON.parse(rawText);
         this.lastFetchedConfig = data;
+        this.saveConfigToHistory(configUrl, data);
         this.editor.value = JSON.stringify(data, null, 2);
         this.updateLineNumbers();
         this.setStatus('Fetched successfully', 'success');
@@ -786,6 +793,105 @@ class JSONEditor {
     } catch (error) {
       this.setStatus('Copy failed', 'error');
     }
+  }
+
+  // --- Config History ---
+
+  getAllHistory() {
+    try {
+      return JSON.parse(localStorage.getItem('json-editor-history') || '{}');
+    } catch {
+      return {};
+    }
+  }
+
+  saveConfigToHistory(url, config) {
+    const history = this.getAllHistory();
+    if (!history[url]) history[url] = [];
+    history[url].unshift({ timestamp: Date.now(), config });
+    history[url] = history[url].slice(0, 10);
+    localStorage.setItem('json-editor-history', JSON.stringify(history));
+  }
+
+  toggleHistoryPanel() {
+    if (this.historyPanel.style.display === 'block') {
+      this.closeHistoryPanel();
+      return;
+    }
+    this.renderHistoryList();
+    this.historyPanel.style.display = 'block';
+  }
+
+  closeHistoryPanel() {
+    this.historyPanel.style.display = 'none';
+  }
+
+  renderHistoryList() {
+    const allHistory = this.getAllHistory();
+    const urls = Object.keys(allHistory).filter(u => allHistory[u].length > 0);
+
+    if (urls.length === 0) {
+      this.historyList.innerHTML = '<div class="history-empty">No history yet. Fetch a config to start saving history.</div>';
+      return;
+    }
+
+    const currentUrl = this.getConfigUrl();
+    const selectedUrl = (currentUrl && allHistory[currentUrl]?.length > 0) ? currentUrl : urls[0];
+    const entries = allHistory[selectedUrl] || [];
+
+    let html = '';
+    if (urls.length > 1) {
+      html += '<div class="history-url-selector">';
+      html += '<label>URL:</label>';
+      html += '<select id="history-url-select">';
+      for (const u of urls) {
+        const selected = u === selectedUrl ? ' selected' : '';
+        html += `<option value="${this.escapeHtml(u)}"${selected}>${this.escapeHtml(u)}</option>`;
+      }
+      html += '</select></div>';
+    }
+
+    html += this.buildHistoryEntriesHtml(entries);
+    this.historyList.innerHTML = html;
+
+    const urlSelect = document.getElementById('history-url-select');
+    if (urlSelect) {
+      urlSelect.addEventListener('change', (e) => {
+        const sel = e.target.value;
+        const selEntries = allHistory[sel] || [];
+        document.getElementById('history-entries').innerHTML = this.buildHistoryEntriesHtml(selEntries, true);
+        this.bindHistoryEntryClicks(selEntries);
+      });
+    }
+
+    this.bindHistoryEntryClicks(entries);
+  }
+
+  buildHistoryEntriesHtml(entries, innerOnly = false) {
+    let html = innerOnly ? '' : '<div id="history-entries">';
+    for (let i = 0; i < entries.length; i++) {
+      const date = new Date(entries[i].timestamp);
+      html += `<div class="history-entry" data-index="${i}">
+        <span class="history-time">${this.escapeHtml(date.toLocaleString())}</span>
+      </div>`;
+    }
+    if (!innerOnly) html += '</div>';
+    return html;
+  }
+
+  bindHistoryEntryClicks(entries) {
+    this.historyList.querySelectorAll('.history-entry').forEach(el => {
+      el.addEventListener('click', () => {
+        const idx = parseInt(el.getAttribute('data-index'), 10);
+        const entry = entries[idx];
+        if (entry) {
+          this.editor.value = JSON.stringify(entry.config, null, 2);
+          this.updateLineNumbers();
+          this.closeHistoryPanel();
+          this.setStatus(`Loaded history from ${new Date(entry.timestamp).toLocaleString()}`, 'success');
+        }
+      });
+    });
   }
 
   showError(message) {
